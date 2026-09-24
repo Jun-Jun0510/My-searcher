@@ -77,7 +77,6 @@ feeds:
 # 行動: ポートフォリオページ（週1で取得し、前回との差分で新規投資先を検出）
 portfolio:
   url: https://a16z.com/portfolio/
-  # CSSセレクタはページ構造を見て調整する（要確認）。JSで描画されるページなら取得方法ごと変更が必要
-  item_selector: ".portfolio-company"   # 1社分の要素
-  name_selector: ".name"                # その中の企業名
-  sector_selector: ".category"          # その中の分野ラベル（任意）
+  # ページは最初の数十社だけ描画し、全社分（2026-09時点で860社）のJSONを data-companies 属性に埋め込んでいる。
+  # 分野は focus_areas、説明は website_description、初回出資日は initial_a16z_date_funded を使う
+  data_selector: "[data-companies]"
