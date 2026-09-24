@@ -40,13 +40,14 @@ interests:
 # URLはすべて要確認。取得できないフィードは [skip] と表示してスキップする。
 feeds:
   # 発言: a16z
-  - name: a16z.com
-    url: https://a16z.com/feed/
+  # a16z.com/feed/ は404（RSS廃止）。a16z.substack.com は www.a16z.news に転送され、
+  # a16z.com のブログ記事と投資発表（Investing in ...）が全文で配信されている
   - name: a16z News
-    url: https://a16znews.substack.com/feed
-  # a16z.com/newsletters/ の American Dynamism の Substack リンク + /feed に置き換える
+    url: https://www.a16z.news/feed
+  # American Dynamism: a16z.com/newsletters に専用Substackのリンクはない（2026-09時点）。
+  # a16zamericandynamism.substack.com は最終更新が2025-10で休眠中。AD関連の記事は a16z News に載る
   # - name: American Dynamism
-  #   url: https://<xxx>.substack.com/feed
+  #   url: https://a16zamericandynamism.substack.com/feed
 
   # 科学
   - name: Quanta Magazine
