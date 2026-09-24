@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-import anthropic, feedparser, yaml
+import anthropic, feedparser, trafilatura, yaml
 from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).parent
@@ -55,6 +55,17 @@ def text_of(entry):
     return BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
 
 
+def full_text(url):
+    """フィードが要約だけのとき、記事ページから本文を取る。取れなければ空文字"""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (personal digest reader)"})
+    try:
+        raw = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+    except Exception as ex:
+        print(f"[fulltext skip] {url}: {ex}", file=sys.stderr)
+        return ""
+    return trafilatura.extract(raw) or ""
+
+
 def collect(con):
     new = 0
     for src in CFG["feeds"]:
@@ -68,9 +79,14 @@ def collect(con):
                 continue
             p = e.get("published_parsed") or e.get("updated_parsed")
             pub = dt.datetime(*p[:6], tzinfo=dt.timezone.utc).isoformat() if p else NOW.isoformat()
+            if con.execute("SELECT 1 FROM items WHERE url=?", (url,)).fetchone():
+                continue
+            text = text_of(e)
+            if len(text) < CFG.get("fulltext_below", 1000):
+                text = max(text, full_text(url), key=len)
             cur = con.execute(
                 "INSERT OR IGNORE INTO items(url,source,title,published,content,fetched_at) VALUES(?,?,?,?,?,?)",
-                (url, src["name"], e.get("title", ""), pub, text_of(e)[: CFG.get("max_chars", 12000)], NOW.isoformat()))
+                (url, src["name"], e.get("title", ""), pub, text[: CFG.get("max_chars", 12000)], NOW.isoformat()))
             new += cur.rowcount
     con.commit()
     return new

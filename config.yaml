@@ -1,6 +1,7 @@
 model: claude-sonnet-5
 db_path: data/digest.db
 max_chars: 12000          # 1記事あたりLLMに渡す最大文字数
+fulltext_below: 1000      # フィードの本文がこれより短ければ記事ページから本文を取りに行く
 site_url: https://<your-github-name>.github.io/<repo>/   # メールのリンク先
 
 # 読者像（編集方針に使う。自由に書き換えてOK）
