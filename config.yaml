@@ -1,0 +1,81 @@
+model: claude-sonnet-5
+db_path: data/digest.db
+max_chars: 12000          # 1記事あたりLLMに渡す最大文字数
+site_url: https://<your-github-name>.github.io/<repo>/   # メールのリンク先
+
+# 読者像（編集方針に使う。自由に書き換えてOK）
+reader_profile: >
+  モータ制御・パワエレのエンジニア。ロボティクスへのキャリア転向を準備中。
+  AIインフラのボトルネック（電力・半導体・データセンター）に関心を持つ個人投資家。
+
+# 関心トラック（記事との交差を検出）。keywordsは例示で、LLMは近い概念も拾う
+interests:
+  - name: アクチュエータ・物理層
+    purpose: 「変換層」ポジションの市場ニーズを測る（キャリア・Tama）
+    keywords: [actuator modeling, actuator net, sim-to-real, quasi-direct drive, strain wave gear, torque density, thermal derating, humanoid actuator]
+  - name: パワーエレクトロニクス
+    purpose: 本業の技術動向と、専門性が効く投資・事業機会の把握
+    keywords: [SiC, GaN, wide bandgap, inverter, motor drive, solid-state transformer, power density, gate driver, magnetics, bidirectional charging, power conversion]
+  - name: Physical AI・ロボット基盤モデル
+    purpose: どの層に資金が集まり、どこが空白かを見る
+    keywords: [robot foundation model, VLA, world model, humanoid, teleoperation data, Isaac Lab, embodied AI]
+  - name: AIインフラのボトルネック
+    purpose: 電力・熱・送電網テーゼの補強材料と反証材料を両方拾う
+    keywords: [grid interconnection, transformer shortage, nuclear, SMR, gas turbine, liquid cooling, 800V DC datacenter, energy storage]
+  - name: エッジAI・組み込み
+    purpose: search_code / Physics-to-Edge の需要確認
+    keywords: [edge inference, embedded AI, MCU, FPGA, on-device model, real-time control]
+  - name: 製造・electro-industrial
+    purpose: 産業ドライブの知見が効く領域の動向
+    keywords: [reshoring, factory automation, American Dynamism, defense tech, industrial robotics]
+  - name: 物理・科学（網羅）
+    purpose: 学習の題材と、長期で技術になる科学シグナルの先取り
+    keywords: [quantum computing, fusion, superconductors, photonics, advanced materials, condensed matter, space, semiconductor physics, thermodynamics, AI for science]
+  - name: AI×化学・材料
+    purpose: 学習テーマ選び（化学×AI）
+    keywords: [AI for materials, self-driving lab, battery materials, computational chemistry, molecular design]
+
+# ---------- 収集ソース（第1段階） ----------
+# group: a16z（発言）/ science（科学）/ engineering（工学・業界の裏取り）
+# URLはすべて要確認。取得できないフィードは [skip] と表示してスキップする。
+feeds:
+  # 発言: a16z
+  - name: a16z.com
+    url: https://a16z.com/feed/
+  - name: a16z News
+    url: https://a16znews.substack.com/feed
+  # a16z.com/newsletters/ の American Dynamism の Substack リンク + /feed に置き換える
+  # - name: American Dynamism
+  #   url: https://<xxx>.substack.com/feed
+
+  # 科学
+  - name: Quanta Magazine
+    url: https://www.quantamagazine.org/feed/
+    group: science
+
+  # 工学・実践
+  - name: IEEE Spectrum
+    url: https://spectrum.ieee.org/feeds/feed.rss
+    group: engineering
+  - name: The Robot Report
+    url: https://www.therobotreport.com/feed/
+    group: engineering
+  - name: EE Times
+    url: https://www.eetimes.com/feed/
+    group: engineering
+
+  # 第2段階の候補
+  # - name: MONOist
+  #   url: <要確認>
+  #   group: engineering
+  # - name: Hackaday
+  #   url: https://hackaday.com/blog/feed/
+  #   group: engineering
+
+# 行動: ポートフォリオページ（週1で取得し、前回との差分で新規投資先を検出）
+portfolio:
+  url: https://a16z.com/portfolio/
+  # CSSセレクタはページ構造を見て調整する（要確認）。JSで描画されるページなら取得方法ごと変更が必要
+  item_selector: ".portfolio-company"   # 1社分の要素
+  name_selector: ".name"                # その中の企業名
+  sector_selector: ".category"          # その中の分野ラベル（任意）
