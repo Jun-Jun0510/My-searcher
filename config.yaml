@@ -2,6 +2,7 @@ model: claude-sonnet-5
 db_path: data/digest.db
 max_chars: 12000          # 1記事あたりLLMに渡す最大文字数
 fulltext_below: 1000      # フィードの本文がこれより短ければ記事ページから本文を取りに行く
+fulltext_timeout: 15      # 上の本文取得のタイムアウト秒
 site_url: https://<your-github-name>.github.io/<repo>/   # メールのリンク先
 
 # 読者像（編集方針に使う。自由に書き換えてOK）
@@ -65,6 +66,10 @@ feeds:
   - name: EE Times
     url: https://www.eetimes.com/feed/
     group: engineering
+    # ボット対策で記事ページへの接続がリセットされ、本文取得は必ず失敗する
+    # （UAを変えても同じ）。毎回10件分のタイムアウトを待つのは無駄なので試みない。
+    # そのためEE Timesの記事は見出し＋リード文（約200字）のみで分析される。
+    fulltext: false
 
   # 第2段階の候補
   # - name: MONOist

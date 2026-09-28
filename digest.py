@@ -60,7 +60,7 @@ def full_text(url):
     """フィードが要約だけのとき、記事ページから本文を取る。取れなければ空文字"""
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (personal digest reader)"})
     try:
-        raw = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+        raw = urllib.request.urlopen(req, timeout=CFG.get("fulltext_timeout", 15)).read().decode("utf-8", "replace")
     except Exception as ex:
         print(f"[fulltext skip] {url}: {ex}", file=sys.stderr)
         return ""
@@ -83,7 +83,8 @@ def collect(con):
             if con.execute("SELECT 1 FROM items WHERE url=?", (url,)).fetchone():
                 continue
             text = text_of(e)
-            if len(text) < CFG.get("fulltext_below", 1000):
+            # fulltext: false のソースは本文取得を試みない（ボット対策で必ず失敗するため）
+            if len(text) < CFG.get("fulltext_below", 1000) and src.get("fulltext", True):
                 text = max(text, full_text(url), key=len)
             cur = con.execute(
                 "INSERT OR IGNORE INTO items(url,source,title,published,content,fetched_at) VALUES(?,?,?,?,?,?)",
