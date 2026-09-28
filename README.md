@@ -26,6 +26,20 @@ a16zの発信とポートフォリオ、科学・工学メディアを毎日収�
    ```
 7. ActionsタブからRun workflowで手動実行し、サイト更新とメール到着を確認
 
+## GitHub Actions（`.github/workflows/digest.yml`）
+
+| きっかけ | モード | 中身 |
+|---|---|---|
+| 毎日 06:47 JST（火〜日） | collect | 収集だけ。`data/digest.db` を更新してコミット |
+| 毎週 月曜 07:17 JST | full | 分析 → 号の生成 → Pagesへデプロイ → メール送信 |
+| Actionsタブ → Run workflow | 手で選択 | `collect` / `dry-run`（メールを送らない） / `full`。`backfill_days` も指定できる |
+
+DBは状態そのものなので、実行のたびに `data/` をリポジトリへ push して次回に引き継ぐ。
+そのため同時実行は `concurrency` で直列化している。
+
+初回は Run workflow から `dry-run` ＋ `backfill_days=35` で実行し、
+Pagesのサイトを確認してからメール送信（`full`）に進むとよい。
+
 ## 関心の編集
 `config.yaml`の`interests`にトラック（name / purpose / keywords）を追加・編集する。タブは自動で増減する。
 

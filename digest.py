@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-import anthropic, feedparser, yaml
+import anthropic, feedparser, trafilatura, yaml
 from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).parent
@@ -43,7 +43,8 @@ def db():
     CREATE TABLE IF NOT EXISTS predictions(url TEXT, claim TEXT, horizon TEXT, made_at TEXT);
     CREATE TABLE IF NOT EXISTS issues(sent_at TEXT, subject TEXT, html TEXT);
     CREATE TABLE IF NOT EXISTS company_mentions(url TEXT, company TEXT, seen_at TEXT, grp TEXT);
-    CREATE TABLE IF NOT EXISTS portfolio(name TEXT PRIMARY KEY, sector TEXT, first_seen TEXT, baseline INTEGER);
+    CREATE TABLE IF NOT EXISTS portfolio(name TEXT PRIMARY KEY, sector TEXT, first_seen TEXT, baseline INTEGER,
+        description TEXT, funded TEXT);
     """)
     return con
 
@@ -53,6 +54,17 @@ def text_of(entry):
     raw = entry.content[0].get("value", "") if entry.get("content") else ""
     raw = raw or entry.get("summary", "")
     return BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
+
+
+def full_text(url):
+    """フィードが要約だけのとき、記事ページから本文を取る。取れなければ空文字"""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (personal digest reader)"})
+    try:
+        raw = urllib.request.urlopen(req, timeout=CFG.get("fulltext_timeout", 15)).read().decode("utf-8", "replace")
+    except Exception as ex:
+        print(f"[fulltext skip] {url}: {ex}", file=sys.stderr)
+        return ""
+    return trafilatura.extract(raw) or ""
 
 
 def collect(con):
@@ -68,9 +80,15 @@ def collect(con):
                 continue
             p = e.get("published_parsed") or e.get("updated_parsed")
             pub = dt.datetime(*p[:6], tzinfo=dt.timezone.utc).isoformat() if p else NOW.isoformat()
+            if con.execute("SELECT 1 FROM items WHERE url=?", (url,)).fetchone():
+                continue
+            text = text_of(e)
+            # fulltext: false のソースは本文取得を試みない（ボット対策で必ず失敗するため）
+            if len(text) < CFG.get("fulltext_below", 1000) and src.get("fulltext", True):
+                text = max(text, full_text(url), key=len)
             cur = con.execute(
                 "INSERT OR IGNORE INTO items(url,source,title,published,content,fetched_at) VALUES(?,?,?,?,?,?)",
-                (url, src["name"], e.get("title", ""), pub, text_of(e)[: CFG.get("max_chars", 12000)], NOW.isoformat()))
+                (url, src["name"], e.get("title", ""), pub, text[: CFG.get("max_chars", 12000)], NOW.isoformat()))
             new += cur.rowcount
     con.commit()
     return new
@@ -87,15 +105,22 @@ def fetch_portfolio():
     except Exception as ex:
         print(f"[portfolio skip] {ex}", file=sys.stderr)
         return None
+    # ページは最初の数十社だけを描画し、全社分のJSONを data-companies 属性に持っている
+    el = BeautifulSoup(raw, "html.parser").select_one(pc.get("data_selector", "[data-companies]"))
+    try:
+        companies = json.loads(el["data-companies"]) if el else []
+    except (KeyError, ValueError) as ex:
+        print(f"[portfolio] data-companies を読めませんでした: {ex}", file=sys.stderr)
+        companies = []
     found = {}
-    for el in BeautifulSoup(raw, "html.parser").select(pc["item_selector"]):
-        n = el.select_one(pc["name_selector"]) if pc.get("name_selector") else el
-        name = n.get_text(" ", strip=True) if n else ""
+    for c in companies:
+        name = (c.get("name") or c.get("post_title") or "").strip()
         if name:
-            sec = el.select_one(pc["sector_selector"]) if pc.get("sector_selector") else None
-            found[name] = sec.get_text(" ", strip=True) if sec else ""
+            found[name] = {"sector": ", ".join(c.get("focus_areas") or []),
+                           "description": (c.get("website_description") or "").strip(),
+                           "funded": (c.get("initial_a16z_date_funded") or "")[:10]}
     if not found:
-        print("[portfolio] 企業が0件でした。セレクタ、またはJS描画かどうかを確認してください", file=sys.stderr)
+        print("[portfolio] 企業が0件でした。ページ構造が変わっていないか確認してください", file=sys.stderr)
         return None
     return found
 
@@ -107,31 +132,34 @@ def update_portfolio(con):
     baseline = con.execute("SELECT COUNT(*) FROM portfolio").fetchone()[0] == 0
     known = {n for (n,) in con.execute("SELECT name FROM portfolio")}
     new = [n for n in found if n not in known]
-    con.executemany("INSERT INTO portfolio VALUES(?,?,?,?)",
-                    [(n, found[n], NOW.isoformat(), int(baseline)) for n in new])
+    con.executemany("INSERT INTO portfolio VALUES(?,?,?,?,?,?)",
+                    [(n, found[n]["sector"], NOW.isoformat(), int(baseline), found[n]["description"],
+                      found[n]["funded"]) for n in new])
     con.commit()
     print(f"[portfolio] {'ベースライン' if baseline else '新規'} {len(new)}社")
 
 
 PORT_SYS = """For each company, return ONLY JSON:
 {"companies": [{"name": "...", "what_ja": "何をしている会社か日本語1文。確信がなければ null", "interest_tags": ["matching interest track names"]}]}
-Do not guess. If you do not know the company, set what_ja to null and use only the sector hint for tags."""
+Base what_ja on the given description (a16z's own text); translate, do not embellish.
+If the description is empty, do not guess: set what_ja to null and use only the sector hint for tags."""
 
 
 def new_portfolio(con):
-    rows = con.execute("SELECT name,sector,first_seen FROM portfolio WHERE baseline=0 AND first_seen>=? "
-                       "ORDER BY first_seen DESC", (since(7),)).fetchall()
+    rows = con.execute("SELECT name,sector,COALESCE(NULLIF(funded,''),first_seen),description FROM portfolio "
+                       "WHERE baseline=0 AND first_seen>=? ORDER BY first_seen DESC", (since(7),)).fetchall()
     if not rows:
         return []
     try:
         res = ask_json(PORT_SYS, f"Interest tracks:\n{tracks_text()}\n\n"
-                       + json.dumps([{"name": n, "sector": s} for n, s, _ in rows], ensure_ascii=False))
+                       + json.dumps([{"name": n, "sector": s, "description": d} for n, s, _, d in rows],
+                                  ensure_ascii=False))
         info = {c["name"]: c for c in res.get("companies", [])}
     except Exception as ex:
         print(f"[portfolio enrich fail] {ex}", file=sys.stderr)
         info = {}
     return [{"name": n, "sector": s, "date": f[:10], "what_ja": info.get(n, {}).get("what_ja"),
-             "interest_tags": info.get(n, {}).get("interest_tags", [])} for n, s, f in rows]
+             "interest_tags": info.get(n, {}).get("interest_tags", [])} for n, s, f, _ in rows]
 
 
 # ---------- 2. 構造化 ----------

@@ -1,0 +1,25 @@
+# 生成物
+site/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 秘密情報
+.env
+.env.*
+
+# 個人情報（保有銘柄リストなど。公開リポジトリに置かない）
+private/
+holdings*.yaml
+holdings*.csv
+watchlist*.yaml
+watchlist*.csv
+
+# OS / エディタ
+.DS_Store
+.vscode/
+.idea/

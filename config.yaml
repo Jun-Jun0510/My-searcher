@@ -1,7 +1,9 @@
 model: claude-sonnet-5
 db_path: data/digest.db
 max_chars: 12000          # 1記事あたりLLMに渡す最大文字数
-site_url: https://<your-github-name>.github.io/<repo>/   # メールのリンク先
+fulltext_below: 1000      # フィードの本文がこれより短ければ記事ページから本文を取りに行く
+fulltext_timeout: 15      # 上の本文取得のタイムアウト秒
+site_url: https://jun-jun0510.github.io/My-searcher/   # メールのリンク先。Pagesを有効化したら実際のURLで確認する
 
 # 読者像（編集方針に使う。自由に書き換えてOK）
 reader_profile: >
@@ -40,13 +42,14 @@ interests:
 # URLはすべて要確認。取得できないフィードは [skip] と表示してスキップする。
 feeds:
   # 発言: a16z
-  - name: a16z.com
-    url: https://a16z.com/feed/
+  # a16z.com/feed/ は404（RSS廃止）。a16z.substack.com は www.a16z.news に転送され、
+  # a16z.com のブログ記事と投資発表（Investing in ...）が全文で配信されている
   - name: a16z News
-    url: https://a16znews.substack.com/feed
-  # a16z.com/newsletters/ の American Dynamism の Substack リンク + /feed に置き換える
+    url: https://www.a16z.news/feed
+  # American Dynamism: a16z.com/newsletters に専用Substackのリンクはない（2026-09時点）。
+  # a16zamericandynamism.substack.com は最終更新が2025-10で休眠中。AD関連の記事は a16z News に載る
   # - name: American Dynamism
-  #   url: https://<xxx>.substack.com/feed
+  #   url: https://a16zamericandynamism.substack.com/feed
 
   # 科学
   - name: Quanta Magazine
@@ -63,6 +66,10 @@ feeds:
   - name: EE Times
     url: https://www.eetimes.com/feed/
     group: engineering
+    # ボット対策で記事ページへの接続がリセットされ、本文取得は必ず失敗する
+    # （UAを変えても同じ）。毎回10件分のタイムアウトを待つのは無駄なので試みない。
+    # そのためEE Timesの記事は見出し＋リード文（約200字）のみで分析される。
+    fulltext: false
 
   # 第2段階の候補
   # - name: MONOist
@@ -75,7 +82,6 @@ feeds:
 # 行動: ポートフォリオページ（週1で取得し、前回との差分で新規投資先を検出）
 portfolio:
   url: https://a16z.com/portfolio/
-  # CSSセレクタはページ構造を見て調整する（要確認）。JSで描画されるページなら取得方法ごと変更が必要
-  item_selector: ".portfolio-company"   # 1社分の要素
-  name_selector: ".name"                # その中の企業名
-  sector_selector: ".category"          # その中の分野ラベル（任意）
+  # ページは最初の数十社だけ描画し、全社分（2026-09時点で860社）のJSONを data-companies 属性に埋め込んでいる。
+  # 分野は focus_areas、説明は website_description、初回出資日は initial_a16z_date_funded を使う
+  data_selector: "[data-companies]"
