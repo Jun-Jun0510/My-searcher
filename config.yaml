@@ -3,7 +3,7 @@ db_path: data/digest.db
 max_chars: 12000          # 1記事あたりLLMに渡す最大文字数
 fulltext_below: 1000      # フィードの本文がこれより短ければ記事ページから本文を取りに行く
 fulltext_timeout: 15      # 上の本文取得のタイムアウト秒
-site_url: https://<your-github-name>.github.io/<repo>/   # メールのリンク先
+site_url: https://jun-jun0510.github.io/My-searcher/   # メールのリンク先。Pagesを有効化したら実際のURLで確認する
 
 # 読者像（編集方針に使う。自由に書き換えてOK）
 reader_profile: >

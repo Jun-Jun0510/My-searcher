@@ -1,0 +1,125 @@
+name: digest
+
+on:
+  schedule:
+    # 毎日 06:47 JST（火〜日）: 収集だけ。記事の取りこぼしを防ぐ
+    - cron: '47 21 * * 1-6'
+    # 毎週 月曜 07:17 JST: 本処理（分析→号の生成→Pages→メール）
+    - cron: '17 22 * * 0'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 実行モード
+        type: choice
+        default: dry-run
+        options: [collect, dry-run, full]
+      backfill_days:
+        description: 未分析記事を遡る日数（初回は35）
+        type: string
+        default: '8'
+
+# DBをコミットで持ち回るので、同時実行させない
+concurrency:
+  group: digest
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    outputs:
+      site: ${{ steps.run.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # data/ をrebaseして押し戻すので履歴が要る
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: モードを決める
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_DAYS: ${{ inputs.backfill_days }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "mode=$INPUT_MODE"   >> "$GITHUB_OUTPUT"
+            echo "days=$INPUT_DAYS"   >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "17 22 * * 0" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "days=8"    >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=collect" >> "$GITHUB_OUTPUT"
+            echo "days=8"       >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: digest.py を実行
+        id: run
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MODE: ${{ steps.mode.outputs.mode }}
+          DAYS: ${{ steps.mode.outputs.days }}
+        run: |
+          case "$MODE" in
+            collect)  python digest.py --collect-only ;;
+            dry-run)  python digest.py --backfill-days "$DAYS" --dry-run ;;
+            full)     python digest.py --backfill-days "$DAYS" ;;
+          esac
+          if [ -f site/index.html ]; then echo "site=true" >> "$GITHUB_OUTPUT"; fi
+
+      # DBは状態そのものなので、リポジトリに戻して次回の実行に引き継ぐ
+      - name: data/ の変更をコミット
+        env:
+          BRANCH: ${{ github.ref_name }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "変更なし"; exit 0
+          fi
+          git commit -m "data: $MODE $(date -u +%Y-%m-%d)"
+          # 実行中に人が push していた場合に備えて数回やり直す
+          for i in 1 2 3; do
+            if git push origin "HEAD:$BRANCH"; then exit 0; fi
+            echo "push失敗。rebaseして再試行 ($i/3)"
+            git fetch origin "$BRANCH"
+            # DBは生成物なので、衝突したら今回生成した版を採用する。
+            # rebaseでは ours/theirs が入れ替わり、theirs が自分の commit を指す
+            git rebase -X theirs "origin/$BRANCH" || { git rebase --abort; exit 1; }
+          done
+          exit 1
+
+      - name: サイトをアップロード
+        if: steps.run.outputs.site == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: run
+    if: needs.run.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
